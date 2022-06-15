@@ -68,11 +68,11 @@ def main():
 
     TrainImgLoader = torch.utils.data.DataLoader(
         DA.myImageFloder(train_left_img, train_right_img, train_left_disp, True),
-        batch_size=args.train_bsize, shuffle=True, num_workers=4, drop_last=False)
+        batch_size=args.train_bsize, shuffle=True, num_workers=0, drop_last=False)
 
     TestImgLoader = torch.utils.data.DataLoader(
         DA.myImageFloder(test_left_img, test_right_img, test_left_disp, False),
-        batch_size=args.test_bsize, shuffle=False, num_workers=4, drop_last=False)
+        batch_size=args.test_bsize, shuffle=False, num_workers=0, drop_last=False)
 
     if not os.path.isdir(args.save_path):
         os.makedirs(args.save_path)
@@ -186,13 +186,25 @@ def test(dataloader, model, log):
 
     model.eval()
 
+    # warm up
+    for i in range(5):
+        dummyL = torch.randn((args.test_bsize, 3, 368, 1232))
+        dummyR = torch.randn((args.test_bsize, 3, 368, 1232))
+        model(dummyL, dummyR)
+
+    time_costs = []
+
     for batch_idx, (imgL, imgR, disp_L) in enumerate(dataloader):
         imgL = imgL.float().cuda()
         imgR = imgR.float().cuda()
         disp_L = disp_L.float().cuda()
 
         with torch.no_grad():
+            start = time.perf_counter()
             outputs = model(imgL, imgR)
+            end = time.perf_counter()
+
+            time_costs.append(end - start)
             for x in range(stages):
                 output = torch.squeeze(outputs[x], 1)
                 D1s[x].update(error_estimating(output, disp_L).item())
@@ -204,6 +216,7 @@ def test(dataloader, model, log):
 
     info_str = ', '.join(['Stage {}={:.4f}'.format(x, D1s[x].avg) for x in range(stages)])
     log.info('Average test 3-Pixel Error = ' + info_str)
+    print(sum(time_costs) / len(time_costs))
 
 
 def error_estimating(disp, ground_truth, maxdisp=192):

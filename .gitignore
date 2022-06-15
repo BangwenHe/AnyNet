@@ -1,0 +1,13 @@
+__pycache__/
+
+.vscode/
+
+*.so
+*.o
+dataset/
+*.zip
+checkpoint/
+results/
+
+*.pth
+*.tar
