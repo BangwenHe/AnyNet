@@ -47,6 +47,7 @@ parser.add_argument('--pretrained', type=str, default='results/pretrained_anynet
                     help='pretrained model path')
 parser.add_argument('--split_file', type=str, default=None)
 parser.add_argument('--evaluate', action='store_true')
+parser.add_argument('--export', action='store_true')
 
 
 args = parser.parse_args()
@@ -80,6 +81,10 @@ def main():
         log.info(str(key) + ': ' + str(value))
 
     model = models.anynet.AnyNet(args)
+    if args.export:
+        export(model)
+        return
+
     model = nn.DataParallel(model).cuda()
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     log.info('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
@@ -217,6 +222,18 @@ def test(dataloader, model, log):
     info_str = ', '.join(['Stage {}={:.4f}'.format(x, D1s[x].avg) for x in range(stages)])
     log.info('Average test 3-Pixel Error = ' + info_str)
     print(sum(time_costs) / len(time_costs))
+
+
+def export(model):
+    model = model.cuda()
+    dummyL = torch.randn((1, 3, 368, 1232)).cuda()
+    dummyR = torch.randn((1, 3, 368, 1232)).cuda()
+
+    torch.onnx.export(
+        model,
+        (dummyL, dummyR),
+        "anynet.onnx"
+    )
 
 
 def error_estimating(disp, ground_truth, maxdisp=192):
