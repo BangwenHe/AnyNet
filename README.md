@@ -118,7 +118,13 @@ python finetune.py --maxdisp 192 --with_spn --datapath path-to-your-dataset/ \
     --pretrained checkpoint/scenflow/sceneflow.tar --datatype other
 ```
 
+### export ONNX model
 
+For exporting the model, we don't need to compile the spn module. Prerequisite is that you have downloaded the [pth checkpoint](https://drive.google.com/file/d/18Vi68rQO-vcBn3882vkumIWtGggZQDoU/view?usp=sharing) and the [kitti2012](http://www.cvlibs.net/datasets/kitti/eval_stereo.php) dataset.
+
+```
+python finetune.py --maxdisp 192 --datapath path-to-kitti/training/    --save_path results/kitti2012 --datatype 2012 --pretrained checkpoint/kitti2012_ck/checkpoint.tar --evaluate --test_bsize 1
+```
 
 
 ## Results

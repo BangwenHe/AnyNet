@@ -192,10 +192,10 @@ def test(dataloader, model, log):
     model.eval()
 
     # warm up
-    for i in range(5):
-        dummyL = torch.randn((args.test_bsize, 3, 368, 1232))
-        dummyR = torch.randn((args.test_bsize, 3, 368, 1232))
-        model(dummyL, dummyR)
+    # for i in range(5):
+    #     dummyL = torch.randn((args.test_bsize, 3, 368, 1232))
+    #     dummyR = torch.randn((args.test_bsize, 3, 368, 1232))
+    #     model(dummyL, dummyR)
 
     time_costs = []
 
@@ -214,6 +214,9 @@ def test(dataloader, model, log):
                 output = torch.squeeze(outputs[x], 1)
                 D1s[x].update(error_estimating(output, disp_L).item())
 
+        if batch_idx == 0:    
+            export(model.module, imgL, imgR)
+
         info_str = '\t'.join(['Stage {} = {:.4f}({:.4f})'.format(x, D1s[x].val, D1s[x].avg) for x in range(stages)])
 
         log.info('[{}/{}] {}'.format(
@@ -224,15 +227,28 @@ def test(dataloader, model, log):
     print(sum(time_costs) / len(time_costs))
 
 
-def export(model):
+def export(model, inputL=None, inputR=None):
     model = model.cuda()
-    dummyL = torch.randn((1, 3, 368, 1232)).cuda()
-    dummyR = torch.randn((1, 3, 368, 1232)).cuda()
+    model.eval()
+
+    if inputL is None:
+        dummyL = torch.randn((1, 3, 368, 1232)).cuda()
+    else:
+        dummyL = inputL.cuda()
+    
+    if inputR is None:
+        dummyR = torch.randn((1, 3, 368, 1232)).cuda()
+    else:
+        dummyR = inputR.cuda()
 
     torch.onnx.export(
         model,
         (dummyL, dummyR),
-        "anynet.onnx"
+        "anynet.onnx",
+        opset_version=11,
+        verbose=True,
+        input_names=["imgL", "imgR"],
+        output_names=["disp1", "disp2", "disp3"]
     )
 
 

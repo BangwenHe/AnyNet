@@ -4,6 +4,22 @@ import torch.nn as nn
 import torch.utils.data
 import torch.nn.functional as F
 
+
+class MyUpsampling2d(nn.Module):
+    def __init__(self, size=None, scale_factor=None):
+        super(MyUpsampling2d, self).__init__()
+        self.size = size
+        self.scale_factor = scale_factor
+    
+    def forward(self, x):
+        if self.size is not None:
+            return F.interpolate(x, size=self.size, mode='bilinear', align_corners=False)
+        elif self.scale_factor is not None:
+            return F.interpolate(x, scale_factor=self.scale_factor, mode='bilinear', align_corners=False)
+        else:
+            raise ValueError('size or scale_factor must be defined')
+
+
 def preconv2d(in_planes, out_planes, kernel_size, stride, pad, dilation=1, bn=True):
     if bn:
         return nn.Sequential(
@@ -27,7 +43,7 @@ class unetUp(nn.Module):
                 nn.ConvTranspose2d(in_size, out_size, kernel_size=2, stride=2, padding=0)
             )
         else:
-            self.up = nn.UpsamplingBilinear2d(scale_factor=2)
+            self.up = MyUpsampling2d(scale_factor=2)
             in_size = int(in_size * 1.5)
 
         self.conv = nn.Sequential(
