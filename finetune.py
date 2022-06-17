@@ -204,6 +204,9 @@ def test(dataloader, model, log):
         imgR = imgR.float().cuda()
         disp_L = disp_L.float().cuda()
 
+        if batch_idx == 0:    
+            export(model.module, imgL, imgR)
+
         with torch.no_grad():
             start = time.perf_counter()
             outputs = model(imgL, imgR)
@@ -213,9 +216,6 @@ def test(dataloader, model, log):
             for x in range(stages):
                 output = torch.squeeze(outputs[x], 1)
                 D1s[x].update(error_estimating(output, disp_L).item())
-
-        if batch_idx == 0:    
-            export(model.module, imgL, imgR)
 
         info_str = '\t'.join(['Stage {} = {:.4f}({:.4f})'.format(x, D1s[x].val, D1s[x].avg) for x in range(stages)])
 
@@ -228,18 +228,45 @@ def test(dataloader, model, log):
 
 
 def export(model, inputL=None, inputR=None):
-    model = model.cuda()
+    from torch.onnx import register_custom_op_symbolic
+    import torch.onnx.symbolic_helper as sym_help
+
+    def grid_sampler(g, input, grid, mode, padding_mode, align_corners):
+        # mode
+        #   'bilinear'      : onnx::Constant[value={0}]
+        #   'nearest'       : onnx::Constant[value={1}]
+        #   'bicubic'       : onnx::Constant[value={2}]
+        # padding_mode
+        #   'zeros'         : onnx::Constant[value={0}]
+        #   'border'        : onnx::Constant[value={1}]
+        #   'reflection'    : onnx::Constant[value={2}]
+        mode = sym_help._maybe_get_const(mode, "i")
+        padding_mode = sym_help._maybe_get_const(padding_mode, "i")
+        mode_str = ['bilinear', 'nearest', 'bicubic'][mode]
+        padding_mode_str = ['zeros', 'border', 'reflection'][padding_mode]
+        align_corners = int(sym_help._maybe_get_const(align_corners, "b"))
+
+        return g.op("com.microsoft::GridSample", input, grid,
+                    mode_s=mode_str,
+                    padding_mode_s=padding_mode_str,
+                    align_corners_i=align_corners)
+        
+    register_custom_op_symbolic('::grid_sampler', grid_sampler, 1)
+
+    device = torch.device('cpu')
+
+    model = model.to(device)
     model.eval()
 
     if inputL is None:
-        dummyL = torch.randn((1, 3, 368, 1232)).cuda()
+        dummyL = torch.randn((1, 3, 368, 1232)).to(device)
     else:
-        dummyL = inputL.cuda()
+        dummyL = inputL.to(device)
     
     if inputR is None:
-        dummyR = torch.randn((1, 3, 368, 1232)).cuda()
+        dummyR = torch.randn((1, 3, 368, 1232)).to(device)
     else:
-        dummyR = inputR.cuda()
+        dummyR = inputR.to(device)
 
     torch.onnx.export(
         model,
@@ -248,7 +275,7 @@ def export(model, inputL=None, inputR=None):
         opset_version=11,
         verbose=True,
         input_names=["imgL", "imgR"],
-        output_names=["disp1", "disp2", "disp3"]
+        # output_names=["disp1", "disp2", "disp3"]
     )
 
 
