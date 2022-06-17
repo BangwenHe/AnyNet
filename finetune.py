@@ -232,7 +232,8 @@ def export(model):
     torch.onnx.export(
         model,
         (dummyL, dummyR),
-        "anynet.onnx"
+        "anynet.onnx",
+        operator_export_type=torch.onnx.OperatorExportTypes.ONNX_ATEN_FALLBACK
     )
 
 
