@@ -228,6 +228,7 @@ def test(dataloader, model, log):
 
 
 def export(model, inputL=None, inputR=None):
+    import onnx
     from torch.onnx import register_custom_op_symbolic
     import torch.onnx.symbolic_helper as sym_help
 
@@ -268,15 +269,18 @@ def export(model, inputL=None, inputR=None):
     else:
         dummyR = inputR.to(device)
 
+    onnx_path = "anynet2.onnx"
     torch.onnx.export(
         model,
         (dummyL, dummyR),
-        "anynet.onnx",
+        onnx_path,
         opset_version=11,
-        verbose=True,
         input_names=["imgL", "imgR"],
-        # output_names=["disp1", "disp2", "disp3"]
+        output_names=["disp1", "disp2", "disp3"]
     )
+
+    onnx.checker.check_model(onnx.load(onnx_path))
+    print("ONNX model exported to: " + onnx_path)
 
 
 def error_estimating(disp, ground_truth, maxdisp=192):

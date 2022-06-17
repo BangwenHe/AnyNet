@@ -11,3 +11,6 @@ results/
 
 *.pth
 *.tar
+*.onnx
+*.config
+*.ort
