@@ -191,12 +191,6 @@ def test(dataloader, model, log):
 
     model.eval()
 
-    # warm up
-    # for i in range(5):
-    #     dummyL = torch.randn((args.test_bsize, 3, 368, 1232))
-    #     dummyR = torch.randn((args.test_bsize, 3, 368, 1232))
-    #     model(dummyL, dummyR)
-
     time_costs = []
 
     for batch_idx, (imgL, imgR, disp_L) in enumerate(dataloader):
@@ -206,6 +200,7 @@ def test(dataloader, model, log):
 
         if batch_idx == 0:    
             export(model.module, imgL, imgR)
+            # return
 
         with torch.no_grad():
             start = time.perf_counter()
@@ -263,13 +258,17 @@ def export(model, inputL=None, inputR=None):
         dummyL = torch.randn((1, 3, 368, 1232)).to(device)
     else:
         dummyL = inputL.to(device)
+        if dummyL.shape[0] > 1:
+            dummyL = dummyL[0].unsqueeze(0)
     
     if inputR is None:
         dummyR = torch.randn((1, 3, 368, 1232)).to(device)
     else:
         dummyR = inputR.to(device)
+        if dummyR.shape[0] > 1:
+            dummyR = dummyR[0].unsqueeze(0)
 
-    onnx_path = "anynet2.onnx"
+    onnx_path = "anynet_with_spn.onnx"
     torch.onnx.export(
         model,
         (dummyL, dummyR),

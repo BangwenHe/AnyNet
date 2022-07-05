@@ -5,7 +5,7 @@ import torch.utils.data
 from torch.autograd import Variable
 import torch.nn.functional as F
 import math
-from .submodules import post_3dconvs,feature_extraction_conv
+from .submodules import post_3dconvs,feature_extraction_conv, GateRecurrent
 import sys
 
 
@@ -23,13 +23,7 @@ class AnyNet(nn.Module):
         self.with_spn = args.with_spn
 
         if self.with_spn:
-            try:
-                # from .spn.modules.gaterecurrent2dnoind import GateRecurrent2dnoind
-                from .spn_t1.modules.gaterecurrent2dnoind import GateRecurrent2dnoind
-            except:
-                print('Cannot load spn model')
-                sys.exit()
-            self.spn_layer = GateRecurrent2dnoind(True,False)
+            self.spn_layer = GateRecurrent()
             spnC = self.spn_init_channels
             self.refine_spn = [nn.Sequential(
                 nn.Conv2d(3, spnC*2, 3, 1, 1, bias=False),
