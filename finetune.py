@@ -191,12 +191,6 @@ def test(dataloader, model, log):
 
     model.eval()
 
-    # warm up
-    for i in range(5):
-        dummyL = torch.randn((args.test_bsize, 3, 368, 1232))
-        dummyR = torch.randn((args.test_bsize, 3, 368, 1232))
-        model(dummyL, dummyR)
-
     time_costs = []
 
     for batch_idx, (imgL, imgR, disp_L) in enumerate(dataloader):
