@@ -8,6 +8,9 @@ dataset/
 *.zip
 checkpoint/
 results/
+output*/
+images/
+calib_result
 
 *.pth
 *.tar
