@@ -81,11 +81,12 @@ def main():
         log.info(str(key) + ': ' + str(value))
 
     model = models.anynet.AnyNet(args)
+    model = nn.DataParallel(model).cuda()
     if args.export:
-        export(model)
+        model.eval()
+        export(model.module)
         return
 
-    model = nn.DataParallel(model).cuda()
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     log.info('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
 
@@ -200,7 +201,7 @@ def test(dataloader, model, log):
 
         if batch_idx == 0:    
             export(model.module, imgL, imgR)
-            # return
+            return
 
         with torch.no_grad():
             start = time.perf_counter()
@@ -208,9 +209,38 @@ def test(dataloader, model, log):
             end = time.perf_counter()
 
             time_costs.append(end - start)
-            for x in range(stages):
-                output = torch.squeeze(outputs[x], 1)
-                D1s[x].update(error_estimating(output, disp_L).item())
+            # for x in range(stages):
+            #     output = torch.squeeze(outputs[x], 1)
+            #     D1s[x].update(error_estimating(output, disp_L).item())
+
+            import cv2
+            import numpy as np
+
+            def un_norm(image_tensor):
+                npimg = image_tensor.detach().cpu().numpy()
+                npimg = np.transpose(npimg, (1,2,0))*255
+                npimg = ((npimg * [0.229, 0.224, 0.225]) + [0.485, 0.456, 0.406])
+                return npimg
+            
+            disp = outputs[-1].detach().cpu().numpy().squeeze()
+            disp_vis = cv2.normalize(disp, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            disp_vis = cv2.applyColorMap(disp_vis, cv2.COLORMAP_JET)
+            Q = [[ 1., 0., 0., -2.7204545021057129e+02], [0., 1., 0., -3.0039989852905273e+02], 
+                    [0., 0., 0., 5.0782172034846172e+02], [0., 0., 4.6879901308862252e+01, 0. ]]
+            Q = np.array(Q)
+            points_3d = cv2.reprojectImageTo3D(disp, Q) * 1000
+            depth_map = points_3d[:, :, -1]
+            depth_map = np.clip(depth_map, 0, 20000)
+            depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_JET)
+
+            left_image = un_norm(imgL[0])
+            left_image = cv2.normalize(left_image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            left_image = cv2.cvtColor(left_image, cv2.COLOR_RGB2BGR)
+            cv2.putText(left_image, "origin", (20, 20), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(disp_vis, "dispraity", (20, 20), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(depth_map, "depth", (20, 20), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            cv2.imwrite(f"{args.save_path}/{batch_idx}.png", np.hstack([left_image, disp_vis, depth_map]))
 
         info_str = '\t'.join(['Stage {} = {:.4f}({:.4f})'.format(x, D1s[x].val, D1s[x].avg) for x in range(stages)])
 
@@ -250,25 +280,23 @@ def export(model, inputL=None, inputR=None):
     register_custom_op_symbolic('::grid_sampler', grid_sampler, 1)
 
     device = torch.device('cpu')
-
     model = model.to(device)
-    model.eval()
 
     if inputL is None:
-        dummyL = torch.randn((1, 3, 368, 1232)).to(device)
+        dummyL = torch.randn((1, 3, 640, 480)).to(device)
     else:
         dummyL = inputL.to(device)
         if dummyL.shape[0] > 1:
-            dummyL = dummyL[0].unsqueeze(0)
+            dummyL = dummyL[0:1]
     
     if inputR is None:
-        dummyR = torch.randn((1, 3, 368, 1232)).to(device)
+        dummyR = torch.randn((1, 3, 640, 480)).to(device)
     else:
         dummyR = inputR.to(device)
         if dummyR.shape[0] > 1:
-            dummyR = dummyR[0].unsqueeze(0)
+            dummyR = dummyR[0:1]
 
-    onnx_path = "anynet_with_spn.onnx"
+    onnx_path = "anynet_480x640.onnx"
     torch.onnx.export(
         model,
         (dummyL, dummyR),
@@ -280,6 +308,14 @@ def export(model, inputL=None, inputR=None):
 
     onnx.checker.check_model(onnx.load(onnx_path))
     print("ONNX model exported to: " + onnx_path)
+
+    import onnxruntime as ort
+    import numpy as np
+    dummy_output = model(dummyL, dummyR)[-1]
+    sess = ort.InferenceSession(onnx_path)
+    onnx_output = sess.run(None, {"imgL": dummyL.detach().cpu().numpy(), "imgR": dummyR.detach().cpu().numpy()})[-1]
+    print(np.allclose(dummy_output.detach().cpu().numpy(), onnx_output))
+    print(np.mean(np.abs(dummy_output.detach().cpu().numpy() - onnx_output)))
 
 
 def error_estimating(disp, ground_truth, maxdisp=192):

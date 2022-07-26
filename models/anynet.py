@@ -128,13 +128,8 @@ class AnyNet(nn.Module):
         pred = []
         for scale in range(len(feats_l)):
             if scale > 0:
-                if scale == 1:
-                    wflow = F.interpolate(pred[scale-1], (46, 154), mode='bilinear', align_corners=False) \
-                        * feats_l[scale].size(2) / img_size[2]
-                if scale == 2:
-                    wflow = F.interpolate(pred[scale-1], (92, 308), mode='bilinear', align_corners=False) \
-                        * feats_l[scale].size(2) / img_size[2]
-
+                wflow = F.upsample(pred[scale-1], (feats_l[scale].size(2), feats_l[scale].size(3)),
+                                   mode='bilinear') * feats_l[scale].size(2) / img_size[2]
                 cost = self._build_volume_2d3(feats_l[scale], feats_r[scale],
                                          self.maxdisplist[scale], wflow, stride=1)
             else:
@@ -148,12 +143,12 @@ class AnyNet(nn.Module):
             if scale == 0:
                 pred_low_res = disparityregression2(0, self.maxdisplist[0], device=cost.device)(F.softmax(-cost, dim=1))
                 pred_low_res = pred_low_res * img_size[2] / pred_low_res.size(2)
-                disp_up = F.interpolate(pred_low_res, (368, 1232), mode='bilinear', align_corners=False)
+                disp_up = F.upsample(pred_low_res, (img_size[2], img_size[3]), mode='bilinear')
                 pred.append(disp_up)
             else:
                 pred_low_res = disparityregression2(-self.maxdisplist[scale]+1, self.maxdisplist[scale], stride=1, device=cost.device)(F.softmax(-cost, dim=1))
                 pred_low_res = pred_low_res * img_size[2] / pred_low_res.size(2)
-                disp_up = F.interpolate(pred_low_res, (368, 1232), mode='bilinear', align_corners=False)
+                disp_up = F.upsample(pred_low_res, (img_size[2], img_size[3]), mode='bilinear')
                 pred.append(disp_up+pred[scale-1])
 
 
