@@ -118,7 +118,9 @@ python finetune.py --maxdisp 192 --with_spn --datapath path-to-your-dataset/ \
     --pretrained checkpoint/scenflow/sceneflow.tar --datatype other
 ```
 
-
+```
+python .\online_inference.py --pretrained .\checkpoint\kitti2012_ck\checkpoint.tar --save_path results/outdoor_5 --datapath .\images\processed_005\ --calib_filepath .\calib_result\mate40pro.yml --debug
+```
 
 
 ## Results

@@ -163,7 +163,7 @@ class AnyNet(nn.Module):
             # refine_pred = F.interpolate(refine_flow, (img_size[2] , img_size[3]), mode='bilinear', align_corners=False)
             # pred.append(refine_pred)
 
-            custom_refine_flow = self.spn_layer(X, G1, G2, G3)
+            custom_refine_flow = self.custom_spn_layer(X, G1, G2, G3)
             custom_refine_flow = self.refine_spn[2](custom_refine_flow)
             custom_refine_pred = F.interpolate(custom_refine_flow, (img_size[2] , img_size[3]), mode='bilinear', align_corners=False)
             pred.append(custom_refine_pred)
