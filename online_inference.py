@@ -1,6 +1,7 @@
 import argparse
 from itertools import product
 import os
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -21,6 +22,7 @@ def parse_args():
     parser.add_argument('--save_path', type=str, default='results/finetune_anynet',
                         help='the path of saving checkpoints and log')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--save_video', action='store_true')
     
     # model config
     parser.add_argument('--maxdisplist', type=int, nargs='+', default=[12, 3, 3])
@@ -42,8 +44,8 @@ def parse_args():
 
 def build_input_images(image_folder):
     images = [i for i in os.listdir(image_folder) if i.endswith(("jpg", "png"))]
-    left_images = [os.path.join(image_folder, i) for i in images if i.__contains__("left")]
-    right_images = [os.path.join(image_folder, i) for i in images if i.__contains__("right")]
+    left_images = [os.path.join(image_folder, i) for i in images if "left" in i]
+    right_images = [os.path.join(image_folder, i) for i in images if "right" in i]
 
     left_images.sort()
     right_images.sort()
@@ -99,7 +101,7 @@ def on_mouse_moving(event, x, y, flags, param):
         copyed = showing_img.copy()
         cv2.putText(copyed, f"{depth_map[y][x]}", (0, showing_img.shape[0]), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 255, 255),2)
 
-        print(depth_map[y][x])
+        print(depth_map[y][x], end="\r")
         cv2.imshow("depth", copyed)
 
 
@@ -114,6 +116,7 @@ def main(args):
     checkpoint = torch.load(args.pretrained, map_location='cpu')
     model.load_state_dict(checkpoint['state_dict'], strict=False)
 
+    # print(f"cuda device: {torch.cuda.is_available()}")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.eval()
     model.to(device)
@@ -122,7 +125,21 @@ def main(args):
     max_depth = 8
     Q = load_stereo_coefficients(args.calib_filepath)[-1]
 
-    left_image_paths, right_image_paths = build_input_images(args.datapath)
+    datapath = args.datapath
+    left_image_paths, right_image_paths = build_input_images(datapath)
+    "python online_inference.py --with_spn --pretrained checkpoint\kitti2012_ck\checkpoint.tar --datapath ~\Desktop\1m --debug --save_video"
+    if args.save_video:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        if datapath.endswith(("\\", "/")):
+            datapath = datapath[:-1]
+        video_name = os.path.split(datapath)[1]
+        print(video_name)
+        
+        video_path = os.path.join(args.save_path, f"{video_name}_{timestamp}.mp4")
+        resolution = (480, 640)
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fps = 30
+        video_recorder = cv2.VideoWriter(video_path, fourcc, fps, resolution)
 
     for _, (left_image_path, right_image_path) in enumerate(zip(left_image_paths, right_image_paths)):
         imgL = preprocess(left_image_path).unsqueeze(0).to(device)
@@ -149,13 +166,19 @@ def main(args):
         left_image = cv2.cvtColor(left_image, cv2.COLOR_RGB2BGR)
 
         if args.debug:
+            cv2.putText(disp_vis, "Disparity", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255))
             cv2.imshow("debug", np.hstack([left_image, disp_vis]))
             cv2.imshow("depth", depth_map)
             cv2.setMouseCallback("depth", on_mouse_moving, [points_3d[:, :, -1], depth_map])
             cv2.waitKey(0)
-        else:
-            cv2.imwrite(os.path.join(args.save_path, os.path.basename(left_image_path)), depth_map)
-            np.save(os.path.join(args.save_path, os.path.basename(left_image_path).replace(".png", ".npy")), points_3d[:, :, -1])
+        
+        if args.save_video:
+            assert left_image.shape[0] == resolution[1] and left_image.shape[1] == resolution[0]
+            video_recorder.write(depth_map)
+    
+    if args.save_video:
+        print(f"result video has been written to {video_path}")
+        video_recorder.release()
 
 
 if __name__ == "__main__":
