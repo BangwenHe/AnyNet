@@ -57,6 +57,30 @@ class unetUp(nn.Module):
         outputs2 = F.pad(outputs2, (0, -right, 0, -buttom))
         return self.conv(torch.cat([inputs1, outputs2], 1))
 
+
+class GateRecurrent(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, X: torch.Tensor, G1, G2, G3):
+        width = X.size(3)
+        H = torch.zeros_like(X)
+        for t in range(width):
+            g1 = G1[..., t]
+            g2 = G2[..., t]
+            g3 = G3[..., t]
+
+            h1 = F.pad(H[:, :, :-1, t-1], (1, 0))
+            h2 = H[:, :, :, t-1]
+            h3 = F.pad(H[:, :, 1:, t-1], (0, 1))
+
+            g = g1 + g2 + g3
+            x = X[..., t]
+            H[..., t] = (1 - g) * x + (h1 * g1 + h2 * g2 + h3 * g3)
+
+        return H
+
+
 class feature_extraction_conv(nn.Module):
     def __init__(self, init_channels,  nblock=2):
         super(feature_extraction_conv, self).__init__()

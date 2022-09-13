@@ -5,7 +5,7 @@ import torch.utils.data
 from torch.autograd import Variable
 import torch.nn.functional as F
 import math
-from .submodules import post_3dconvs,feature_extraction_conv
+from .submodules import post_3dconvs,feature_extraction_conv, GateRecurrent
 import sys
 
 
@@ -23,13 +23,7 @@ class AnyNet(nn.Module):
         self.with_spn = args.with_spn
 
         if self.with_spn:
-            try:
-                # from .spn.modules.gaterecurrent2dnoind import GateRecurrent2dnoind
-                from .spn_t1.modules.gaterecurrent2dnoind import GateRecurrent2dnoind
-            except:
-                print('Cannot load spn model')
-                sys.exit()
-            self.spn_layer = GateRecurrent2dnoind(True,False)
+            self.spn_layer = GateRecurrent()
             spnC = self.spn_init_channels
             self.refine_spn = [nn.Sequential(
                 nn.Conv2d(3, spnC*2, 3, 1, 1, bias=False),
@@ -81,8 +75,8 @@ class AnyNet(nn.Module):
         """
         B, C, H, W = x.size()
         # mesh grid
-        xx = torch.arange(0, W, device='cuda').view(1, -1).repeat(H, 1)
-        yy = torch.arange(0, H, device='cuda').view(-1, 1).repeat(1, W)
+        xx = torch.arange(0, W, device=x.device).view(1, -1).repeat(H, 1)
+        yy = torch.arange(0, H, device=x.device).view(-1, 1).repeat(1, W)
         xx = xx.view(1, 1, H, W).repeat(B, 1, 1, 1)
         yy = yy.view(1, 1, H, W).repeat(B, 1, 1, 1)
         vgrid = torch.cat((xx, yy), 1).float()
@@ -101,9 +95,11 @@ class AnyNet(nn.Module):
 
     def _build_volume_2d(self, feat_l, feat_r, maxdisp, stride=1):
         assert maxdisp % stride == 0  # Assume maxdisp is multiple of stride
-        cost = torch.zeros((feat_l.size()[0], maxdisp//stride, feat_l.size()[2], feat_l.size()[3]), device='cuda')
+        cost = torch.zeros((feat_l.size()[0], maxdisp//stride, feat_l.size()[2], feat_l.size()[3]), device=feat_l.device)
         for i in range(0, maxdisp, stride):
-            cost[:, i//stride, :, :i] = feat_l[:, :, :, :i].abs().sum(1)
+            if i > 0:
+                cost[:, i//stride, :, :i] = feat_l[:, :, :, :i].abs().sum(1)
+
             if i > 0:
                 cost[:, i//stride, :, i:] = torch.norm(feat_l[:, :, :, i:] - feat_r[:, :, :, :-i], 1, 1)
             else:
@@ -114,7 +110,7 @@ class AnyNet(nn.Module):
     def _build_volume_2d3(self, feat_l, feat_r, maxdisp, disp, stride=1):
         size = feat_l.size()
         batch_disp = disp[:,None,:,:,:].repeat(1, maxdisp*2-1, 1, 1, 1).view(-1,1,size[-2], size[-1])
-        batch_shift = torch.arange(-maxdisp+1, maxdisp, device='cuda').repeat(size[0])[:,None,None,None] * stride
+        batch_shift = torch.arange(-maxdisp+1, maxdisp, device=feat_l.device).repeat(size[0])[:,None,None,None] * stride
         batch_disp = batch_disp - batch_shift.float()
         batch_feat_l = feat_l[:,None,:,:,:].repeat(1,maxdisp*2-1, 1, 1, 1).view(-1,size[-3],size[-2], size[-1])
         batch_feat_r = feat_r[:,None,:,:,:].repeat(1,maxdisp*2-1, 1, 1, 1).view(-1,size[-3],size[-2], size[-1])
@@ -132,31 +128,27 @@ class AnyNet(nn.Module):
         pred = []
         for scale in range(len(feats_l)):
             if scale > 0:
-                if scale == 1:
-                    wflow = F.interpolate(pred[scale-1], (46, 154), mode='bilinear', align_corners=False) \
-                        * feats_l[scale].size(2) / img_size[2]
-                if scale == 2:
-                    wflow = F.interpolate(pred[scale-1], (92, 308), mode='bilinear', align_corners=False) \
-                        * feats_l[scale].size(2) / img_size[2]
-
+                wflow = F.upsample(pred[scale-1], (feats_l[scale].size(2), feats_l[scale].size(3)),
+                                   mode='bilinear') * feats_l[scale].size(2) / img_size[2]
                 cost = self._build_volume_2d3(feats_l[scale], feats_r[scale],
                                          self.maxdisplist[scale], wflow, stride=1)
             else:
                 cost = self._build_volume_2d(feats_l[scale], feats_r[scale],
                                              self.maxdisplist[scale], stride=1)
+                # return cost
 
             cost = torch.unsqueeze(cost, 1)
             cost = self.volume_postprocess[scale](cost)
             cost = cost.squeeze(1)
             if scale == 0:
-                pred_low_res = disparityregression2(0, self.maxdisplist[0])(F.softmax(-cost, dim=1))
+                pred_low_res = disparityregression2(0, self.maxdisplist[0], device=cost.device)(F.softmax(-cost, dim=1))
                 pred_low_res = pred_low_res * img_size[2] / pred_low_res.size(2)
-                disp_up = F.interpolate(pred_low_res, (368, 1232), mode='bilinear', align_corners=False)
+                disp_up = F.upsample(pred_low_res, (img_size[2], img_size[3]), mode='bilinear')
                 pred.append(disp_up)
             else:
-                pred_low_res = disparityregression2(-self.maxdisplist[scale]+1, self.maxdisplist[scale], stride=1)(F.softmax(-cost, dim=1))
+                pred_low_res = disparityregression2(-self.maxdisplist[scale]+1, self.maxdisplist[scale], stride=1, device=cost.device)(F.softmax(-cost, dim=1))
                 pred_low_res = pred_low_res * img_size[2] / pred_low_res.size(2)
-                disp_up = F.interpolate(pred_low_res, (368, 1232), mode='bilinear', align_corners=False)
+                disp_up = F.upsample(pred_low_res, (img_size[2], img_size[3]), mode='bilinear')
                 pred.append(disp_up+pred[scale-1])
 
 
@@ -176,9 +168,9 @@ class AnyNet(nn.Module):
         return pred
 
 class disparityregression2(nn.Module):
-    def __init__(self, start, end, stride=1):
+    def __init__(self, start, end, stride=1, device='cuda'):
         super(disparityregression2, self).__init__()
-        self.disp = torch.arange(start*stride, end*stride, stride, device='cuda', requires_grad=False).view(1, -1, 1, 1).float()
+        self.disp = torch.arange(start*stride, end*stride, stride, device=device, requires_grad=False).view(1, -1, 1, 1).float()
 
     def forward(self, x):
         disp = self.disp.repeat(x.size()[0], 1, x.size()[2], x.size()[3])
