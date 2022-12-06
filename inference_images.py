@@ -132,7 +132,7 @@ def main(args):
         depth_map = np.clip(depth_map, min_depth, max_depth)
         depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
         depth_map = 255 - depth_map
-        depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_TURBO)
+        depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
         
         left_image = un_norm(imgL[0])
         left_image = cv2.normalize(left_image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
@@ -143,7 +143,7 @@ def main(args):
                 np.hstack([left_image, disp_vis, depth_map]))
         else:
             cv2.imwrite(os.path.join(args.save_path, os.path.basename(left_image_path)), depth_map)
-            np.save(os.path.join(args.save_path, os.path.basename(left_image_path).replace(".png", ".npy")), points_3d[:, :, -1])
+            # np.save(os.path.join(args.save_path, os.path.basename(left_image_path).replace(".png", ".npy")), points_3d[:, :, -1])
 
 
 if __name__ == "__main__":
