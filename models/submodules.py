@@ -112,6 +112,28 @@ class feature_extraction_conv(nn.Module):
         return downs
 
 
+class GateRecurrent(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, X, G1, G2, G3):
+        width = X.size(3)
+        H = torch.zeros_like(X)
+        for t in range(width):
+            g1 = G1[..., t]
+            g2 = G2[..., t]
+            g3 = G3[..., t]
+
+            h1 = F.pad(H[:, :, :-1, t-1], (1, 0))
+            h2 = H[:, :, :, t-1]
+            h3 = F.pad(H[:, :, 1:, t-1], (0, 1))
+
+            g = g1 + g2 + g3
+            x = X[..., t]
+            H[..., t] = (1 - g) * x + (h1 * g1 + h2 * g2 + h3 * g3)
+
+        return H
+
 
 def batch_relu_conv3d(in_planes, out_planes, kernel_size=3, stride=1, pad=1, bn3d=True):
     if bn3d:

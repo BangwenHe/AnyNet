@@ -8,6 +8,9 @@ dataset/
 *.zip
 checkpoint/
 results/
+output*/
+images/
+alir_result/
 
 *.pth
 *.tar
