@@ -96,17 +96,23 @@ if __name__ == '__main__':
 
 
     stereo_calibration_file = "calib_result/p30pro.yml"
+    stereo_calibration_file = "calib_result/mate40pro_horizonal_0-0.yml"
+    stereo_calibration_file = "calib_result/xm12su_1.51635581_1.51225972_221208.yml"
     K1, D1, K2, D2, R, T, E, F, R1, R2, P1, P2, Q = load_stereo_coefficients(stereo_calibration_file)
     video_dir= "images/p30_20220720"
+    video_dir = "images/221205-2"
+    video_dir = "images/221208-3/"
     videos = glob.glob(f"{video_dir}/*.mp4")
     print(videos)
 
     crop_right = [1.03855444, 1.05697224]
+    crop_right = []
+    crop_right = [1.51635581, 1.51225972]
     crop_left = []
     for video in videos:
         frames = []
         cap = cv2.VideoCapture(video)
-        video_name = video.split("\\")[-1].replace(".mp4","")
+        video_name = video.split(os.sep)[-1].replace(".mp4","")
         os.makedirs(f"{video_dir}/madnet_train_videos/{video_name}/",exist_ok=True)
         while True:
             ret, frame = cap.read()
@@ -134,11 +140,5 @@ if __name__ == '__main__':
             rightMapX, rightMapY = cv2.initUndistortRectifyMap(K2, D2, R2, P2, (width, height), cv2.CV_32FC1)
             right_rectified = cv2.remap(right_image, rightMapX, rightMapY, cv2.INTER_LINEAR, cv2.BORDER_CONSTANT)
 
-
-            # cv2.imshow("t",np.hstack([left_image,right_image]))
-            # cv2.imshow("z", np.hstack([left_rectified, right_rectified]))
             cv2.imwrite(f"{video_dir}/madnet_train_videos/{video_name}/left_{i}.png",left_rectified)
             cv2.imwrite(f"{video_dir}/madnet_train_videos/{video_name}/right_{i}.png", right_rectified)
-            # cv2.imshow("t",np.hstack([left_rectified,right_rectified]))
-            # cv2.waitKey()
-            # # cv2.imwrite(f"{}")

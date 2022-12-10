@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--growth_rate', type=int, nargs='+', default=[4,1,1], help='growth rate in the 3d network')
     parser.add_argument('--spn_init_channels', type=int, default=8, help='initial channels for spnet')
 
-    parser.add_argument('--pretrained', type=str, default='results/pretrained_anynet/checkpoint.tar',
+    parser.add_argument('--pretrained', type=str, default="checkpoint/kitti2012_ck/checkpoint.tar",
                         help='pretrained model path')
 
     args = parser.parse_args()
@@ -104,7 +104,6 @@ def main(args):
     if not os.path.isdir(args.save_path):
         os.makedirs(args.save_path)
 
-    args.pretrained = "checkpoint/kitti2012_ck/checkpoint.tar"
     args.with_spn = True
 
     model = models.anynet.AnyNet(args)
@@ -117,23 +116,16 @@ def main(args):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.eval()
     model.to(device)
-    # phone_type = "mate40pro_undistorted"
-    # phone_type = "remove_opencv_distortion_param"
-    # phone_type = "mate40pro"
-    # phone_type = "mate40pro_0719"
-    phone_type = "p30_20220720"
-    # phone_type = "p30pro"
-    # phone_type = "p30_new"
-    stereo_calibration_file = f"calib_result/{phone_type}.yml"
+
+    stereo_calibration_file = "calib_result/xm12su_1.51635581_1.51225972_221208.yml"
+    stereo_calibration_file = "calib_result/pixel4_1.593118_1.59532552_221208.yml"
     
-    root_image_folder = "images"
-    root_output_folder = f"output3/{phone_type}"
+    root_image_folder = "images/221208-3/test3"
+    root_output_folder = "output4/221208-3/test3"
+    root_image_folder = "images/221210-1"
+    root_output_folder = "output4/221210-1"
     modes = ["processed_static", "processed_slow", "processed_fast"]
-    # modes = ["processed_static"]
-    # modes = ["static", "slow", "fast"]
-    # depth_folders = ["0.5", "1"]
     depth_folders = ["0.5", "1", "3", "5"]
-    # depth_folders = ["3", "5"]
     min_depth = -10
     max_depth = 20
 
@@ -146,17 +138,19 @@ def main(args):
 
         output_folder = os.path.join(root_output_folder, depth_folder, mode)
         raw_disp_output_folder = os.path.join(root_output_folder, depth_folder, mode.replace("processed", "disparity"))
-        image_folder = os.path.join(root_image_folder, phone_type, depth_folder, mode)
+        image_folder = os.path.join(root_image_folder, depth_folder, mode)
         os.makedirs(output_folder, exist_ok=True)
         os.makedirs(raw_disp_output_folder, exist_ok=True)
         left_image_paths, right_image_paths = build_input_images(image_folder)
 
-        roi_file_path = os.path.join(root_image_folder, phone_type, depth_folder, f"{mode}_{depth_folder}.roi")
+        roi_file_path = os.path.join(root_image_folder, depth_folder, f"{mode}_{depth_folder}.roi")
         image_name_to_bbox = load_roi_file(roi_file_path)
 
         for _, (left_image_path, right_image_path) in enumerate(zip(left_image_paths, right_image_paths)):
             imgL = preprocess(left_image_path).unsqueeze(0).to(device)
             imgR = preprocess(right_image_path).unsqueeze(0).to(device)
+            if "pixel4" in stereo_calibration_file:
+                imgL, imgR = imgR, imgL
 
             with torch.no_grad():
                 outputs = model(imgL, imgR)
@@ -165,7 +159,7 @@ def main(args):
 
             disp_vis = cv2.normalize(disp, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
             disp_vis = 255 - disp_vis
-            disp_vis = cv2.applyColorMap(disp_vis, cv2.COLORMAP_TURBO)
+            disp_vis = cv2.applyColorMap(disp_vis, cv2.COLORMAP_MAGMA)
 
             points_3d = cv2.reprojectImageTo3D(disp, Q)
             x, y, w, h, gt = image_name_to_bbox[os.path.basename(left_image_path)]
@@ -196,7 +190,7 @@ def main(args):
             depth_map = np.clip(depth_map, min_depth, max_depth)
             depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
             depth_map = 255 - depth_map
-            depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_TURBO)
+            depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
             
             left_image = un_norm(imgL[0])
             left_image = cv2.normalize(left_image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
